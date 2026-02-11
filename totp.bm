@@ -1,0 +1,47 @@
+Function NormalizeKey$ (Key$)
+    T$ = Key$
+    If Len(T$) > 64 Then T$ = SHA1$(T$)
+    If Len(T$) < 64 Then T$ = T$ + String$(64 - Len(T$), 0)
+    NormalizeKey$ = T$
+End Function
+Function XorPad$ (Block$, Value~%%)
+    O$ = String$(64, 0)
+    For I = 1 To 64
+        B~%% = Asc(Block$, I) Xor Value~%%
+        Asc(O$, I) = B~%%
+    Next I
+    XorPad$ = O$
+End Function
+Function HMAC$ (Key$, Msg$)
+    NK$ = NormalizeKey$(Key$)
+    IPAD$ = XorPad$(NK$, &H36)
+    OPAD$ = XorPad$(NK$, &H5C)
+    HMAC$ = SHA1ReformatBigEndian$(SHA1$(OPAD$ + SHA1ReformatBigEndian$(SHA1$(IPAD$ + Msg$))))
+End Function
+Function TruncateTOTP~& (H$)
+    __OFFSET = Asc(H$, 20) And 15
+    b0 = Asc(H$, __OFFSET + 1) And 127
+    b1 = Asc(H$, __OFFSET + 2)
+    b2 = Asc(H$, __OFFSET + 3)
+    b3 = Asc(H$, __OFFSET + 4)
+    bin~& = _ShL(b0, 24) Or _ShL(b1, 16) Or _ShL(b2, 8) Or b3
+    TruncateTOTP~& = bin~& Mod 1000000
+End Function
+Function TOTP$ (secret$)
+    counter~&& = Int((UnixTime - 19800) / 30)
+    ctr$ = _MK$(_Integer64, counter~&&)
+    H$ = HMAC$(secret$, Reverse$(ctr$))
+    code~& = TruncateTOTP~&(H$)
+    T$ = Right$("000000" + _ToStr$(code~&), 6)
+    TOTP$ = Left$(T$, 3) + " " + Right$(T$, 3)
+End Function
+
+Function SHA1ReformatBigEndian$ (T$)
+    O$ = T$
+    For __I~& = 1 To 20 Step 4
+        L~& = CVL(Mid$(O$, __I~&, 4))
+        Mid$(O$, __I~&, 4) = ReverseMKL$(L~&)
+    Next __I~&
+    SHA1ReformatBigEndian$ = O$
+End Function
+

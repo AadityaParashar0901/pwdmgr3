@@ -1,0 +1,219 @@
+$Console:Only
+Const MODE_PASSWORD = 1
+Const MODE_BACKUP_CODE = 2
+Const MODE_TOTP = 3
+Const MODE_EXTRA = 4
+Dim Shared As String FILEDATA
+Dim Shared PASSWORD$
+If _FileExists("pwddata3") Then FILEDATA = _ReadFile$("pwddata3") Else NewFileData
+If _CommandCount = 0 Then ShowHelp
+For I = 1 To _CommandCount
+    Select Case Command$(I)
+        Case "pwd": PASSWORD$ = Command$(I + 1): I = I + 1
+
+        Case "add":
+            Map$ = MapNew
+            MapSetKey Map$, "identifier", Command$(I + 1)
+            MapSetKey Map$, "password", ""
+            MapSetKey Map$, "backup_code", ListStringNew
+            MapSetKey Map$, "totp", ""
+            MapSetKey Map$, "extra", ""
+            ListStringAdd FILEDATA, Encrypt$(Map$)
+            SELECTED_ENTRY = ListStringLength(FILEDATA)
+            I = I + 1
+        Case "insert":
+            Map$ = MapNew
+            MapSetKey Map$, "identifier", Command$(I + 2)
+            MapSetKey Map$, "password", ""
+            MapSetKey Map$, "backup_code", ListStringNew
+            MapSetKey Map$, "totp", ""
+            MapSetKey Map$, "extra", ""
+            ListStringInsert FILEDATA, Encrypt$(Map$), GetValue(Command$(I + 1))
+            SELECTED_ENTRY = GetValue(Command$(I + 1))
+            I = I + 2
+        Case "list": For J = 1 To ListStringLength(FILEDATA)
+                Map$ = Decrypt$(ListStringGet(FILEDATA, J))
+                Print IntegerToHex$(J); ": "; MapGetKey(Map$, "identifier")
+                If Len(MapGetKey(Map$, "password")) Then Print "    - Password"
+                If ListStringLength(MapGetKey(Map$, "backup_code")) Then Print "    - Backup Codes: " + _ToStr$(ListStringLength(MapGetKey(Map$, "backup_code")))
+                If Len(MapGetKey(Map$, "totp")) Then Print "    - TOTP"
+                If Len(MapGetKey(Map$, "extra")) Then Print "    - Extra"
+            Next J
+        Case "select": SELECTED_ENTRY = GetValue(Command$(I + 1)): I = I + 1
+        Case "select_find": FIND_STRING$ = Command$(I + 1): I = I + 1
+            SELECTED_ENTRY = 0
+            For J = 1 To ListStringLength(FILEDATA)
+                Identifier$ = MapGetKey(Decrypt$(ListStringGet(FILEDATA, J)), "identifier")
+                If InStr(Identifier$, FIND_STRING$) = 0 Then _Continue
+                Print Identifier$
+                SELECTED_ENTRY = _IIf(SELECTED_ENTRY = 0, J, SELECTED_ENTRY)
+            Next J
+        Case "delete": ListStringDelete FILEDATA, GetValue(Command$(I + 1)): I = I + 1
+        Case "password": MODE = MODE_PASSWORD
+        Case "backup_code": MODE = MODE_BACKUP_CODE
+        Case "totp": MODE = MODE_TOTP
+        Case "extra": MODE = MODE_EXTRA
+        Case "load":
+            If SELECTED_ENTRY = 0 Or SELECTED_ENTRY > ListStringLength(FILEDATA) Then InvalidEntry_Error: Exit Select
+            Map$ = Decrypt$(ListStringGet(FILEDATA, SELECTED_ENTRY))
+            FILE$ = Command$(I + 1): I = I + 1
+            If _FileExists(FILE$) = 0 Then FILE$ = _StartDir$ + "\" + FILE$
+            If _FileExists(FILE$) = 0 Then InvalidFile_Error: Exit Select
+            FILE$ = _ReadFile$(FILE$)
+            Select Case MODE
+                Case MODE_PASSWORD: MapSetKey Map$, "password", FILE$
+                Case MODE_BACKUP_CODE: BACKUP_CODES$ = MapGetKey(Map$, "backup_code")
+                    ListStringAdd BACKUP_CODES$, FILE$
+                    MapSetKey Map$, "backup_code", BACKUP_CODES$
+                Case MODE_TOTP: MapSetKey Map$, "totp", Base32Decode$(FILE$)
+                Case MODE_EXTRA: MapSetKey Map$, "extra", FILE$
+            End Select
+            ListStringEdit FILEDATA, Encrypt$(Map$), SELECTED_ENTRY
+        Case "set":
+            If SELECTED_ENTRY = 0 Or SELECTED_ENTRY > ListStringLength(FILEDATA) Then InvalidEntry_Error: Exit Select
+            Map$ = Decrypt$(ListStringGet(FILEDATA, SELECTED_ENTRY))
+            Select Case MODE
+                Case MODE_PASSWORD: MapSetKey Map$, "password", Command$(I + 1): I = I + 1
+                Case MODE_BACKUP_CODE: BACKUP_CODES$ = MapGetKey(Map$, "backup_code")
+                    ListStringAdd BACKUP_CODES$, Command$(I + 1): I = I + 1
+                    MapSetKey Map$, "backup_code", BACKUP_CODES$
+                Case MODE_TOTP: MapSetKey Map$, "totp", Base32Decode$(Command$(I + 1)): I = I + 1
+                Case MODE_EXTRA: MapSetKey Map$, "extra", Command$(I + 1): I = I + 1
+            End Select
+            ListStringEdit FILEDATA, Encrypt$(Map$), SELECTED_ENTRY
+        Case "remove", "clear":
+            If SELECTED_ENTRY = 0 Or SELECTED_ENTRY > ListStringLength(FILEDATA) Then InvalidEntry_Error: Exit Select
+            Map$ = Decrypt$(ListStringGet(FILEDATA, SELECTED_ENTRY))
+            Select Case MODE
+                Case MODE_PASSWORD: MapSetKey Map$, "password", ""
+                Case MODE_BACKUP_CODE: MapSetKey Map$, "backup_code", ListStringNew
+                Case MODE_TOTP: MapSetKey Map$, "totp", ""
+                Case MODE_EXTRA: MapSetKey Map$, "extra", ""
+            End Select
+            ListStringEdit FILEDATA, Encrypt$(Map$), SELECTED_ENTRY
+        Case "peek":
+            If SELECTED_ENTRY = 0 Or SELECTED_ENTRY > ListStringLength(FILEDATA) Then InvalidEntry_Error: Exit Select
+            Map$ = Decrypt$(ListStringGet(FILEDATA, SELECTED_ENTRY))
+            Select Case MODE
+                Case MODE_PASSWORD: Print MapGetKey(Map$, "password")
+                Case MODE_BACKUP_CODE: BACKUP_CODES$ = MapGetKey(Map$, "backup_code")
+                    If ListStringLength(BACKUP_CODES$) Then
+                        Print ListStringPrint(BACKUP_CODES$)
+                    Else
+                        Print "No Backup Codes Available"
+                    End If
+                    MapSetKey Map$, "backup_code", BACKUP_CODES$
+                Case MODE_TOTP: Print TOTP$(MapGetKey(Map$, "totp"))
+                Case MODE_EXTRA: Print MapGetKey(Map$, "extra")
+            End Select
+            ListStringEdit FILEDATA, Encrypt$(Map$), SELECTED_ENTRY
+        Case "view":
+            If SELECTED_ENTRY = 0 Or SELECTED_ENTRY > ListStringLength(FILEDATA) Then InvalidEntry_Error: Exit Select
+            Map$ = Decrypt$(ListStringGet(FILEDATA, SELECTED_ENTRY))
+            Select Case MODE
+                Case MODE_PASSWORD: Print MapGetKey(Map$, "password")
+                Case MODE_BACKUP_CODE: BACKUP_CODES$ = MapGetKey(Map$, "backup_code")
+                    If ListStringLength(BACKUP_CODES$) Then
+                        Print ListStringGet(BACKUP_CODES$, 1)
+                        ListStringDelete BACKUP_CODES$, 1
+                    Else
+                        Print "No Backup Codes Available"
+                    End If
+                    MapSetKey Map$, "backup_code", BACKUP_CODES$
+                Case MODE_TOTP: Print TOTP$(MapGetKey(Map$, "totp"))
+                Case MODE_EXTRA: Print MapGetKey(Map$, "extra")
+            End Select
+            ListStringEdit FILEDATA, Encrypt$(Map$), SELECTED_ENTRY
+        Case "copy":
+            If SELECTED_ENTRY = 0 Or SELECTED_ENTRY > ListStringLength(FILEDATA) Then InvalidEntry_Error: Exit Select
+            Map$ = Decrypt$(ListStringGet(FILEDATA, SELECTED_ENTRY))
+            Select Case MODE
+                Case MODE_PASSWORD: _Clipboard$ = MapGetKey(Map$, "password")
+                Case MODE_BACKUP_CODE: BACKUP_CODES$ = MapGetKey(Map$, "backup_code")
+                    If ListStringLength(BACKUP_CODES$) Then
+                        _Clipboard$ = ListStringGet(BACKUP_CODES$, 1)
+                        ListStringDelete BACKUP_CODES$, 1
+                    Else
+                        _Clipboard$ = ""
+                    End If
+                    MapSetKey Map$, "backup_code", BACKUP_CODES$
+                Case MODE_TOTP: _Clipboard$ = TOTP$(MapGetKey(Map$, "totp"))
+                Case MODE_EXTRA: _Clipboard$ = MapGetKey(Map$, "extra")
+            End Select
+            ListStringEdit FILEDATA, Encrypt$(Map$), SELECTED_ENTRY
+        Case Else:
+            ShowHelp
+    End Select
+Next I
+_WriteFile "pwddata3", FILEDATA
+System
+Sub ShowHelp
+    Print "pwdmgr3 - Password Manager 3"
+    Print "Syntax: " + Command$(0) + " [Unlocks] [Commands] [Attributes] [Options] [Arguments]"
+    Print "Unlocks:"
+    Print "  pwd []"
+    Print "Commands:"
+    Print "  add []"
+    Print "  insert [] []"
+    Print "  list"
+    Print "  select []"
+    Print "  select_find []"
+    Print "  delete []"
+    Print "Attributes:"
+    Print "  password"
+    Print "  backup_code"
+    Print "  totp"
+    Print "  extra"
+    Print "Options:"
+    Print "  set []"
+    Print "  load []"
+    Print "  remove / clear"
+    Print "  peek"
+    Print "  view"
+    Print "  copy"
+End Sub
+Sub NewFileData
+    FILEDATA = ListStringNew
+End Sub
+Sub InvalidEntry_Error
+    Print "Invalid Entry"
+End Sub
+Sub InvalidFile_Error
+    Print "Invalid File"
+End Sub
+Function Encrypt$ (__I$) Static
+    Static __J As _Unsigned _Bit * 6
+    Static __S$, __I~&
+    __J = 0
+    __S$ = SHA512$(PASSWORD$)
+    __O$ = String$(Len(__I$), 0)
+    For __I~& = 1 To Len(__I$)
+        Asc(__O$, __I~&) = Asc(__I$, __I~&) Xor Asc(__S$, 1 + __J)
+        __J = __J + 1
+    Next __I~&
+    Encrypt$ = __O$
+End Function
+Function Decrypt$ (__I$) Static
+    Static __J As _Unsigned _Bit * 6
+    Static __S$, __I~&
+    __J = 0
+    __S$ = SHA512$(PASSWORD$)
+    __O$ = String$(Len(__I$), 0)
+    For __I~& = 1 To Len(__I$)
+        Asc(__O$, __I~&) = Asc(__I$, __I~&) Xor Asc(__S$, 1 + __J)
+        __J = __J + 1
+    Next __I~&
+    Decrypt$ = __O$
+End Function
+'$Include:'include\dsa\liststring.bas'
+'$Include:'include\dsa\map.bas'
+'$Include:'totp.bm'
+'$Include:'include\sha1.bas'
+'$Include:'include\string.bm'
+'$Include:'include\unixtime.bm'
+'$Include:'include\hex.bm'
+'$Include:'include\getvalue.bas'
+'$Include:'include\reversemkl.bm'
+'$Include:'include\base32decode.bm'
+'$Include:'include\putbitbuffermsb.bm'
+'$Include:'include\sha512.bm'
