@@ -1,4 +1,5 @@
 $Console:Only
+Randomize Timer
 Const MODE_PASSWORD = 1
 Const MODE_BACKUP_CODE = 2
 Const MODE_TOTP = 3
@@ -39,6 +40,14 @@ For I = 1 To _CommandCount
                 If Len(MapGetKey(Map$, "totp")) Then Print "    - TOTP"
                 If Len(MapGetKey(Map$, "extra")) Then Print "    - Extra"
             Next J
+        Case "view_everything": For J = 1 To ListStringLength(FILEDATA)
+                Map$ = Decrypt$(ListStringGet(FILEDATA, J))
+                Print IntegerToHex$(J); ": "; MapGetKey(Map$, "identifier")
+                If Len(MapGetKey(Map$, "password")) Then Print "    - Password: " + MapGetKey(Map$, "password")
+                If ListStringLength(MapGetKey(Map$, "backup_code")) Then Print "    - Backup Codes: " + _ToStr$(ListStringLength(MapGetKey(Map$, "backup_code"))) + ": " + ListStringPrint(MapGetKey(Map$, "backup_code"))
+                If Len(MapGetKey(Map$, "totp")) Then Print "    - TOTP: " + TOTP$(MapGetKey(Map$, "totp"))
+                If Len(MapGetKey(Map$, "extra")) Then Print "    - Extra: " + MapGetKey(Map$, "extra")
+            Next J
         Case "select": SELECTED_ENTRY = GetValue(Command$(I + 1)): I = I + 1
         Case "select_find": FIND_STRING$ = Command$(I + 1): I = I + 1
             SELECTED_ENTRY = 0
@@ -49,10 +58,34 @@ For I = 1 To _CommandCount
                 SELECTED_ENTRY = _IIf(SELECTED_ENTRY = 0, J, SELECTED_ENTRY)
             Next J
         Case "delete": ListStringDelete FILEDATA, GetValue(Command$(I + 1)): I = I + 1
+
         Case "password": MODE = MODE_PASSWORD
         Case "backup_code": MODE = MODE_BACKUP_CODE
         Case "totp": MODE = MODE_TOTP
         Case "extra": MODE = MODE_EXTRA
+
+        Case "create": If SELECTED_ENTRY = 0 Or SELECTED_ENTRY > ListStringLength(FILEDATA) Then
+                Print RandomPassword$(GetValue(Command$(I + 1)))
+                I = I + 1
+            Else
+                RP$ = RandomPassword$(GetValue(Command$(I + 1)))
+                Select Case MODE
+                    Case MODE_PASSWORD: MapSetKey Map$, "password", RP$
+                    Case MODE_BACKUP_CODE, MODE_TOTP, MODE_EXTRA: InvalidAttribute_Error
+                End Select
+            End If
+        Case "set":
+            If SELECTED_ENTRY = 0 Or SELECTED_ENTRY > ListStringLength(FILEDATA) Then InvalidEntry_Error: Exit Select
+            Map$ = Decrypt$(ListStringGet(FILEDATA, SELECTED_ENTRY))
+            Select Case MODE
+                Case MODE_PASSWORD: MapSetKey Map$, "password", Command$(I + 1): I = I + 1
+                Case MODE_BACKUP_CODE: BACKUP_CODES$ = MapGetKey(Map$, "backup_code")
+                    ListStringAdd BACKUP_CODES$, Command$(I + 1): I = I + 1
+                    MapSetKey Map$, "backup_code", BACKUP_CODES$
+                Case MODE_TOTP: MapSetKey Map$, "totp", Base32Decode$(Command$(I + 1)): I = I + 1
+                Case MODE_EXTRA: MapSetKey Map$, "extra", Command$(I + 1): I = I + 1
+            End Select
+            ListStringEdit FILEDATA, Encrypt$(Map$), SELECTED_ENTRY
         Case "load":
             If SELECTED_ENTRY = 0 Or SELECTED_ENTRY > ListStringLength(FILEDATA) Then InvalidEntry_Error: Exit Select
             Map$ = Decrypt$(ListStringGet(FILEDATA, SELECTED_ENTRY))
@@ -67,18 +100,6 @@ For I = 1 To _CommandCount
                     MapSetKey Map$, "backup_code", BACKUP_CODES$
                 Case MODE_TOTP: MapSetKey Map$, "totp", Base32Decode$(FILE$)
                 Case MODE_EXTRA: MapSetKey Map$, "extra", FILE$
-            End Select
-            ListStringEdit FILEDATA, Encrypt$(Map$), SELECTED_ENTRY
-        Case "set":
-            If SELECTED_ENTRY = 0 Or SELECTED_ENTRY > ListStringLength(FILEDATA) Then InvalidEntry_Error: Exit Select
-            Map$ = Decrypt$(ListStringGet(FILEDATA, SELECTED_ENTRY))
-            Select Case MODE
-                Case MODE_PASSWORD: MapSetKey Map$, "password", Command$(I + 1): I = I + 1
-                Case MODE_BACKUP_CODE: BACKUP_CODES$ = MapGetKey(Map$, "backup_code")
-                    ListStringAdd BACKUP_CODES$, Command$(I + 1): I = I + 1
-                    MapSetKey Map$, "backup_code", BACKUP_CODES$
-                Case MODE_TOTP: MapSetKey Map$, "totp", Base32Decode$(Command$(I + 1)): I = I + 1
-                Case MODE_EXTRA: MapSetKey Map$, "extra", Command$(I + 1): I = I + 1
             End Select
             ListStringEdit FILEDATA, Encrypt$(Map$), SELECTED_ENTRY
         Case "remove", "clear":
@@ -156,6 +177,7 @@ Sub ShowHelp
     Print "  add []"
     Print "  insert [] []"
     Print "  list"
+    Print "  view_everything"
     Print "  select []"
     Print "  select_find []"
     Print "  delete []"
@@ -165,6 +187,7 @@ Sub ShowHelp
     Print "  totp"
     Print "  extra"
     Print "Options:"
+    Print "  create []"
     Print "  set []"
     Print "  load []"
     Print "  remove / clear"
@@ -181,6 +204,18 @@ End Sub
 Sub InvalidFile_Error
     Print "Invalid File"
 End Sub
+Sub InvalidAttribute_Error
+    Print "Invalid Attribute"
+End Sub
+Function RandomPassword$ (__L~&) Static
+    Static __RP$, __I~&
+    __RPS$ = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()_+-=[]/"
+    __RP$ = String$(__L~&, 0)
+    For __I~& = 1 To __L~&
+        Asc(__RP$, __I~&) = Asc(__RPS$, Int(Rnd * 79) + 1)
+    Next __I~&
+    RandomPassword$ = __RP$
+End Function
 Function Encrypt$ (__I$) Static
     Static __J As _Unsigned _Bit * 6
     Static __S$, __I~&
