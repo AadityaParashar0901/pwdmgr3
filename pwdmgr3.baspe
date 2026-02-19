@@ -66,14 +66,16 @@ For I = 1 To _CommandCount
 
         Case "create": If SELECTED_ENTRY = 0 Or SELECTED_ENTRY > ListStringLength(FILEDATA) Then
                 Print RandomPassword$(GetValue(Command$(I + 1)))
-                I = I + 1
             Else
+                Map$ = Decrypt$(ListStringGet(FILEDATA, SELECTED_ENTRY))
                 RP$ = RandomPassword$(GetValue(Command$(I + 1)))
                 Select Case MODE
-                    Case MODE_PASSWORD: MapSetKey Map$, "password", RP$
-                    Case MODE_BACKUP_CODE, MODE_TOTP, MODE_EXTRA: InvalidAttribute_Error
+                    Case MODE_PASSWORD, MODE_EXTRA: MapSetKey Map$, "password", RP$
+                    Case MODE_BACKUP_CODE, MODE_TOTP: InvalidAttribute_Error
                 End Select
+                ListStringEdit FILEDATA, Encrypt$(Map$), SELECTED_ENTRY
             End If
+            I = I + 1
         Case "set":
             If SELECTED_ENTRY = 0 Or SELECTED_ENTRY > ListStringLength(FILEDATA) Then InvalidEntry_Error: Exit Select
             Map$ = Decrypt$(ListStringGet(FILEDATA, SELECTED_ENTRY))
