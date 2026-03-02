@@ -44,7 +44,7 @@ For I = 1 To _CommandCount
                 Map$ = Decrypt$(ListStringGet(FILEDATA, J))
                 Print IntegerToHex$(J); ": "; MapGetKey(Map$, "identifier")
                 If Len(MapGetKey(Map$, "password")) Then Print "    - Password: " + MapGetKey(Map$, "password")
-                If ListStringLength(MapGetKey(Map$, "backup_code")) Then Print "    - Backup Codes: " + _ToStr$(ListStringLength(MapGetKey(Map$, "backup_code"))) + ": " + ListStringPrint(MapGetKey(Map$, "backup_code"))
+                If ListStringLength(MapGetKey(Map$, "backup_code")) Then Print "    - Backup Codes: [" + _ToStr$(ListStringLength(MapGetKey(Map$, "backup_code"))) + "]: " + ListStringPrint(MapGetKey(Map$, "backup_code"))
                 If Len(MapGetKey(Map$, "totp")) Then Print "    - TOTP: " + TOTP$(MapGetKey(Map$, "totp"))
                 If Len(MapGetKey(Map$, "extra")) Then Print "    - Extra: " + MapGetKey(Map$, "extra")
             Next J
@@ -54,9 +54,13 @@ For I = 1 To _CommandCount
             For J = 1 To ListStringLength(FILEDATA)
                 Identifier$ = MapGetKey(Decrypt$(ListStringGet(FILEDATA, J)), "identifier")
                 If InStr(Identifier$, FIND_STRING$) = 0 Then _Continue
-                Print Identifier$
+                Print _IIf(SELECTED_ENTRY = 0, "* ", "  ") + IntegerToHex$(J) + ": " + Identifier$
                 SELECTED_ENTRY = _IIf(SELECTED_ENTRY = 0, J, SELECTED_ENTRY)
             Next J
+        Case "rename": I = I + 1: If SELECTED_ENTRY = 0 Then InvalidEntry_Error: Exit Select
+            Map$ = Decrypt$(ListStringGet(FILEDATA, SELECTED_ENTRY))
+            MapSetKey Map$, "identifier", Command$(I)
+            ListStringEdit FILEDATA, Encrypt$(Map$), SELECTED_ENTRY
         Case "delete": ListStringDelete FILEDATA, GetValue(Command$(I + 1)): I = I + 1
 
         Case "password": MODE = MODE_PASSWORD
@@ -182,6 +186,7 @@ Sub ShowHelp
     Print "  view_everything"
     Print "  select []"
     Print "  select_find []"
+    Print "  rename []"
     Print "  delete []"
     Print "Attributes:"
     Print "  password"
