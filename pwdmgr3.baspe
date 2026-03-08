@@ -42,7 +42,7 @@ For I = 1 To _CommandCount
                 MapSetKey FILEMETADATA, CONST_FILE_METADATA_master_password_hash, SHA512(Master_Password$)
                 UnlockMode = CONST_UNLOCK_MODE_password
             ElseIf MapGetKey(FILEMETADATA, CONST_FILE_METADATA_master_password_hash) = SHA512(Master_Password$) Then
-                TryDecryption CONST_UNLOCK_MODE_password
+                If UnlockMode = 0 Then TryDecryption CONST_UNLOCK_MODE_password
             Else
                 Print "Incorrect Password"
             End If
@@ -305,6 +305,7 @@ End Sub
 Sub CheckPrivilege (NeededUnlockMode~%%) Static
     If NeededUnlockMode~%% > UnlockMode Then
         Print _IIf(UnlockMode, "Not sufficient privileges", "Access Denied")
+        System
     End If
 End Sub
 Sub LoadSession Static
