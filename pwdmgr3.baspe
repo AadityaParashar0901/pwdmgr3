@@ -4,14 +4,14 @@ Const PWDMGR3_VERSION$ = "3.1"
 Const SessionTimeLimit = 120
 
 ' File Metadata Codes
-Const CONST_FILE_METADATA_master_password_hash = Chr$(1)
-Const CONST_FILE_METADATA_pin_hash = Chr$(2)
-Const CONST_FILE_METADATA_salt = Chr$(3)
-Const CONST_FILE_METADATA_file_data_hash = Chr$(4)
-Const CONST_FILE_METADATA_nonce = Chr$(5)
-Const CONST_FILE_METADATA_version = Chr$(6)
-Const CONST_FILE_METADATA_creation_time = Chr$(7)
-Const CONST_FILE_METADATA_file_data = Chr$(127)
+Const CONST_META_master_password_hash = Chr$(1)
+Const CONST_META_pin_hash = Chr$(2)
+Const CONST_META_salt = Chr$(3)
+Const CONST_META_file_data_hash = Chr$(4)
+Const CONST_META_nonce = Chr$(5)
+Const CONST_META_version = Chr$(6)
+Const CONST_META_creation_time = Chr$(7)
+Const CONST_META_file_data = Chr$(127)
 ' File Entry Codes
 Const CONST_ENTRY_identifier = Chr$(1)
 Const CONST_ENTRY_password = Chr$(2)
@@ -38,20 +38,20 @@ For I = 1 To _CommandCount
     Select Case Command$(I)
         Case "pwd": Master_Password$ = Command$(I + 1): I = I + 1
             Master_Password_Hash$ = SHA512(Master_Password$ + Salt$)
-            If MapGetKey(FILEMETADATA, CONST_FILE_METADATA_master_password_hash) = "" Then
-                MapSetKey FILEMETADATA, CONST_FILE_METADATA_master_password_hash, SHA512(Master_Password$)
+            If MapGetKey(FILEMETADATA, CONST_META_master_password_hash) = "" Then
+                MapSetKey FILEMETADATA, CONST_META_master_password_hash, SHA512(Master_Password$)
                 UnlockMode = CONST_UNLOCK_MODE_password
-            ElseIf MapGetKey(FILEMETADATA, CONST_FILE_METADATA_master_password_hash) = SHA512(Master_Password$) Then
+            ElseIf MapGetKey(FILEMETADATA, CONST_META_master_password_hash) = SHA512(Master_Password$) Then
                 If UnlockMode = 0 Then TryDecryption CONST_UNLOCK_MODE_password
             Else
                 Print "Incorrect Password"
             End If
         Case "pin": Master_Pin$ = Command$(I + 1): I = I + 1
-            If MapGetKey(FILEMETADATA, CONST_FILE_METADATA_pin_hash) = "" Then
-                MapSetKey FILEMETADATA, CONST_FILE_METADATA_pin_hash, BlockXor$(Master_Password_Hash$, SHA512(Master_Pin$ + Salt$))
+            If MapGetKey(FILEMETADATA, CONST_META_pin_hash) = "" Then
+                MapSetKey FILEMETADATA, CONST_META_pin_hash, BlockXor$(Master_Password_Hash$, SHA512(Master_Pin$ + Salt$))
                 UnlockMode = _Max(UnlockMode, CONST_UNLOCK_MODE_pin)
             ElseIf UnlockMode = 0 Then
-                Master_Password_Hash$ = BlockXor$(MapGetKey(FILEMETADATA, CONST_FILE_METADATA_pin_hash), SHA512$(Master_Pin$ + Salt$))
+                Master_Password_Hash$ = BlockXor$(MapGetKey(FILEMETADATA, CONST_META_pin_hash), SHA512$(Master_Pin$ + Salt$))
                 TryDecryption CONST_UNLOCK_MODE_pin
             End If
         Case "new_pwd": Master_Password$ = Command$(I + 1): I = I + 1
@@ -60,15 +60,15 @@ For I = 1 To _CommandCount
                 System
             End If
             Master_Password_Hash$ = SHA512(Master_Password$ + Salt$)
-            MapSetKey FILEMETADATA, CONST_FILE_METADATA_master_password_hash, SHA512(Master_Password$)
+            MapSetKey FILEMETADATA, CONST_META_master_password_hash, SHA512(Master_Password$)
             Print "Successfully Updated the Password"
-            MapSetKey FILEMETADATA, CONST_FILE_METADATA_pin_hash, "": Print "The pin is reset"
+            MapSetKey FILEMETADATA, CONST_META_pin_hash, "": Print "The pin is reset"
         Case "new_pin": Master_Pin$ = Command$(I + 1): I = I + 1
             If UnlockMode = 0 Then
                 Print "Decrypt First"
                 System
             End If
-            MapSetKey FILEMETADATA, CONST_FILE_METADATA_pin_hash, BlockXor$(Master_Password_Hash$, SHA512(Master_Pin$ + Salt$))
+            MapSetKey FILEMETADATA, CONST_META_pin_hash, BlockXor$(Master_Password_Hash$, SHA512(Master_Pin$ + Salt$))
         Case "lock": Kill ".pwdmgr3_session"
 
         Case "add": CheckPrivilege CONST_UNLOCK_MODE_password
@@ -233,9 +233,9 @@ For I = 1 To _CommandCount
     End Select
 Next I
 If UnlockMode Then
-    MapSetKey FILEMETADATA, CONST_FILE_METADATA_file_data_hash, MKL$(crc32(FILEDATA))
-    MapSetKey FILEMETADATA, CONST_FILE_METADATA_nonce, NewNonce$
-    MapSetKey FILEMETADATA, CONST_FILE_METADATA_file_data, Encrypt$(FILEDATA, SHA512$(Master_Password_Hash$ + Salt$))
+    MapSetKey FILEMETADATA, CONST_META_file_data_hash, MKL$(crc32(FILEDATA))
+    MapSetKey FILEMETADATA, CONST_META_nonce, NewNonce$
+    MapSetKey FILEMETADATA, CONST_META_file_data, Encrypt$(FILEDATA, SHA512$(Master_Password_Hash$ + Salt$))
 End If
 _WriteFile "pwddata3", FILEMETADATA
 System
@@ -273,26 +273,26 @@ Sub ShowHelp
 End Sub
 Sub ReadFileData (F$)
     FILEMETADATA = _ReadFile$(F$)
-    FILEDATA = MapGetKey(FILEMETADATA, CONST_FILE_METADATA_file_data)
-    Salt$ = MapGetKey(FILEMETADATA, CONST_FILE_METADATA_salt)
-    Nonce$ = MapGetKey(FILEMETADATA, CONST_FILE_METADATA_nonce)
+    FILEDATA = MapGetKey(FILEMETADATA, CONST_META_file_data)
+    Salt$ = MapGetKey(FILEMETADATA, CONST_META_salt)
+    Nonce$ = MapGetKey(FILEMETADATA, CONST_META_nonce)
 End Sub
 Sub NewFileData
     FILEMETADATA = MapNew
-    MapSetKey FILEMETADATA, CONST_FILE_METADATA_master_password_hash, ""
-    MapSetKey FILEMETADATA, CONST_FILE_METADATA_pin_hash, ""
-    Salt$ = RandomString$(64): MapSetKey FILEMETADATA, CONST_FILE_METADATA_salt, Salt$
-    MapSetKey FILEMETADATA, CONST_FILE_METADATA_file_data_hash, MKL$(crc32(ListStringNew))
-    MapSetKey FILEMETADATA, CONST_FILE_METADATA_nonce, NewNonce$
-    MapSetKey FILEMETADATA, CONST_FILE_METADATA_version, PWDMGR3_VERSION$
-    MapSetKey FILEMETADATA, CONST_FILE_METADATA_creation_time, _MK$(_Integer64, UnixTime)
+    MapSetKey FILEMETADATA, CONST_META_master_password_hash, ""
+    MapSetKey FILEMETADATA, CONST_META_pin_hash, ""
+    Salt$ = RandomString$(64): MapSetKey FILEMETADATA, CONST_META_salt, Salt$
+    MapSetKey FILEMETADATA, CONST_META_file_data_hash, MKL$(crc32(ListStringNew))
+    MapSetKey FILEMETADATA, CONST_META_nonce, NewNonce$
+    MapSetKey FILEMETADATA, CONST_META_version, PWDMGR3_VERSION$
+    MapSetKey FILEMETADATA, CONST_META_creation_time, _MK$(_Integer64, UnixTime)
     FILEDATA = ListStringNew
-    MapSetKey FILEMETADATA, CONST_FILE_METADATA_file_data, FILEDATA$
+    MapSetKey FILEMETADATA, CONST_META_file_data, FILEDATA
 End Sub
 Sub TryDecryption (NewUnlockMode~%%) Static
     If UnlockMode Then Exit Sub
     tmpFILEDATA$ = Decrypt$(FILEDATA, SHA512$(Master_Password_Hash$ + Salt$))
-    If crc32(tmpFILEDATA$) Xor CVL(MapGetKey(FILEMETADATA, CONST_FILE_METADATA_file_data_hash)) Then
+    If crc32(tmpFILEDATA$) Xor CVL(MapGetKey(FILEMETADATA, CONST_META_file_data_hash)) Then
         Print "Unsuccessful Decryption"
         System
     Else
@@ -355,7 +355,7 @@ Function RandomPassword$ (__L~&) Static
     RandomPassword$ = __RP$
 End Function
 Function BlockXor$ (__I$, __J$) Static ' Repetitive overlap __J$ on __I$
-    Static __T$, __L~&, __I~&, __J~&
+    Static __T$, __L~&, __I~&, __J~&: __J~& = 0
     __T$ = String$(Len(__I$), 0)
     __L~& = Len(__J$)
     For __I~& = 1 To Len(__I$)
@@ -375,7 +375,7 @@ Function Encrypt$ (__I$, __P$) Static
         __J = __J + 1
     Next __I~&
     Encrypt$ = __O$
-    __O$ = ""
+    __Block$64 = "": __O$ = ""
 End Function
 Function Decrypt$ (__I$, __P$) Static
     Static __I~&, __O$, __Block$64
@@ -387,7 +387,7 @@ Function Decrypt$ (__I$, __P$) Static
         __J = __J + 1
     Next __I~&
     Decrypt$ = __O$
-    __O$ = ""
+    __Block$64 = "": __O$ = ""
 End Function
 '$Include:'include\dsa\liststring.bas'
 '$Include:'include\dsa\map.bas'
