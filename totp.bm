@@ -27,13 +27,12 @@ Function TruncateTOTP~& (H$)
     bin~& = _ShL(b0, 24) Or _ShL(b1, 16) Or _ShL(b2, 8) Or b3
     TruncateTOTP~& = bin~& Mod 1000000
 End Function
-Function TOTP$ (secret$)
-    counter~&& = Int((UnixTime - 19800) / 30)
+Function TOTP$ (secret$, length~&, TimeInterval~&)
+    counter~&& = Int((UnixTime - 19800) / TimeInterval~&)
     ctr$ = _MK$(_Integer64, counter~&&)
     H$ = HMAC$(secret$, Reverse$(ctr$))
     code~& = TruncateTOTP~&(H$)
-    T$ = Right$("000000" + _ToStr$(code~&), 6)
-    TOTP$ = Left$(T$, 3) + " " + Right$(T$, 3)
+    TOTP$ = Right$(String$(length~&, 48) + _ToStr$(code~&), length~&)
 End Function
 
 Function SHA1ReformatBigEndian$ (T$)
@@ -44,4 +43,3 @@ Function SHA1ReformatBigEndian$ (T$)
     Next __I~&
     SHA1ReformatBigEndian$ = O$
 End Function
-

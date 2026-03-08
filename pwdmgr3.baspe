@@ -1,67 +1,126 @@
 $Console:Only
 Randomize Timer
+Const PWDMGR3_VERSION$ = "3.1"
+Const SessionTimeLimit = 120
+
+' File Metadata Codes
+Const CONST_FILE_METADATA_master_password_hash = Chr$(1)
+Const CONST_FILE_METADATA_pin_hash = Chr$(2)
+Const CONST_FILE_METADATA_salt = Chr$(3)
+Const CONST_FILE_METADATA_file_data_hash = Chr$(4)
+Const CONST_FILE_METADATA_nonce = Chr$(5)
+Const CONST_FILE_METADATA_version = Chr$(6)
+Const CONST_FILE_METADATA_creation_time = Chr$(7)
+Const CONST_FILE_METADATA_file_data = Chr$(127)
+' File Entry Codes
+Const CONST_ENTRY_identifier = Chr$(1)
+Const CONST_ENTRY_password = Chr$(2)
+Const CONST_ENTRY_backup_code = Chr$(3)
+Const CONST_ENTRY_totp = Chr$(4)
+Const CONST_ENTRY_extra = Chr$(5)
+Const CONST_ENTRY_tags = Chr$(6)
+
+Const CONST_UNLOCK_MODE_password = 2 ' High value, high priority
+Const CONST_UNLOCK_MODE_pin = 1
 Const MODE_PASSWORD = 1
 Const MODE_BACKUP_CODE = 2
 Const MODE_TOTP = 3
 Const MODE_EXTRA = 4
-Dim Shared As String FILEDATA
-Dim Shared PASSWORD$
-If _FileExists("pwddata3") Then FILEDATA = _ReadFile$("pwddata3") Else NewFileData
+
+Dim Shared As String FILEMETADATA, FILEDATA
+Dim Shared Salt$, Nonce$, UnlockMode As _Unsigned _Byte
+Dim Shared Master_Password_Hash$
+
+If _FileExists("pwddata3") Then ReadFileData "pwddata3" Else NewFileData
+If _FileExists(".pwdmgr3_session") Then LoadSession
 If _CommandCount = 0 Then ShowHelp
 For I = 1 To _CommandCount
     Select Case Command$(I)
-        Case "pwd": PASSWORD$ = Command$(I + 1): I = I + 1
+        Case "pwd": Master_Password$ = Command$(I + 1): I = I + 1
+            Master_Password_Hash$ = SHA512(Master_Password$ + Salt$)
+            If MapGetKey(FILEMETADATA, CONST_FILE_METADATA_master_password_hash) = "" Then
+                MapSetKey FILEMETADATA, CONST_FILE_METADATA_master_password_hash, SHA512(Master_Password$)
+                UnlockMode = CONST_UNLOCK_MODE_password
+            ElseIf MapGetKey(FILEMETADATA, CONST_FILE_METADATA_master_password_hash) = SHA512(Master_Password$) Then
+                TryDecryption CONST_UNLOCK_MODE_password
+            Else
+                Print "Incorrect Password"
+            End If
+        Case "pin": Master_Pin$ = Command$(I + 1): I = I + 1
+            If MapGetKey(FILEMETADATA, CONST_FILE_METADATA_pin_hash) = "" Then
+                MapSetKey FILEMETADATA, CONST_FILE_METADATA_pin_hash, BlockXor$(Master_Password_Hash$, SHA512(Master_Pin$ + Salt$))
+                UnlockMode = _Max(UnlockMode, CONST_UNLOCK_MODE_pin)
+            ElseIf UnlockMode = 0 Then
+                Master_Password_Hash$ = BlockXor$(MapGetKey(FILEMETADATA, CONST_FILE_METADATA_pin_hash), SHA512$(Master_Pin$ + Salt$))
+                TryDecryption CONST_UNLOCK_MODE_pin
+            End If
+        Case "new_pwd": Master_Password$ = Command$(I + 1): I = I + 1
+            If UnlockMode = 0 Then
+                Print "Decrypt First"
+                System
+            End If
+            Master_Password_Hash$ = SHA512(Master_Password$ + Salt$)
+            MapSetKey FILEMETADATA, CONST_FILE_METADATA_master_password_hash, SHA512(Master_Password$)
+            Print "Successfully Updated the Password"
+            MapSetKey FILEMETADATA, CONST_FILE_METADATA_pin_hash, "": Print "The pin is reset"
+        Case "new_pin": Master_Pin$ = Command$(I + 1): I = I + 1
+            If UnlockMode = 0 Then
+                Print "Decrypt First"
+                System
+            End If
+            MapSetKey FILEMETADATA, CONST_FILE_METADATA_pin_hash, BlockXor$(Master_Password_Hash$, SHA512(Master_Pin$ + Salt$))
+        Case "lock": Kill ".pwdmgr3_session"
 
-        Case "add":
+        Case "add": CheckPrivilege CONST_UNLOCK_MODE_password
             Map$ = MapNew
-            MapSetKey Map$, "identifier", Command$(I + 1)
-            MapSetKey Map$, "password", ""
-            MapSetKey Map$, "backup_code", ListStringNew
-            MapSetKey Map$, "totp", ""
-            MapSetKey Map$, "extra", ""
-            ListStringAdd FILEDATA, Encrypt$(Map$)
+            MapSetKey Map$, CONST_ENTRY_identifier, Command$(I + 1)
+            MapSetKey Map$, CONST_ENTRY_password, ""
+            MapSetKey Map$, CONST_ENTRY_backup_code, ListStringNew
+            MapSetKey Map$, CONST_ENTRY_totp, ""
+            MapSetKey Map$, CONST_ENTRY_extra, ""
+            ListStringAdd FILEDATA, Map$
             SELECTED_ENTRY = ListStringLength(FILEDATA)
             I = I + 1
-        Case "insert":
+        Case "insert": CheckPrivilege CONST_UNLOCK_MODE_password
             Map$ = MapNew
-            MapSetKey Map$, "identifier", Command$(I + 2)
-            MapSetKey Map$, "password", ""
-            MapSetKey Map$, "backup_code", ListStringNew
-            MapSetKey Map$, "totp", ""
-            MapSetKey Map$, "extra", ""
-            ListStringInsert FILEDATA, Encrypt$(Map$), GetValue(Command$(I + 1))
+            MapSetKey Map$, CONST_ENTRY_identifier, Command$(I + 2)
+            MapSetKey Map$, CONST_ENTRY_password, ""
+            MapSetKey Map$, CONST_ENTRY_backup_code, ListStringNew
+            MapSetKey Map$, CONST_ENTRY_totp, ""
+            MapSetKey Map$, CONST_ENTRY_extra, ""
+            ListStringInsert FILEDATA, Map$, GetValue(Command$(I + 1))
             SELECTED_ENTRY = GetValue(Command$(I + 1))
             I = I + 2
-        Case "list": For J = 1 To ListStringLength(FILEDATA)
-                Map$ = Decrypt$(ListStringGet(FILEDATA, J))
-                Print IntegerToHex$(J); ": "; MapGetKey(Map$, "identifier")
-                If Len(MapGetKey(Map$, "password")) Then Print "    - Password"
-                If ListStringLength(MapGetKey(Map$, "backup_code")) Then Print "    - Backup Codes: " + _ToStr$(ListStringLength(MapGetKey(Map$, "backup_code")))
-                If Len(MapGetKey(Map$, "totp")) Then Print "    - TOTP"
-                If Len(MapGetKey(Map$, "extra")) Then Print "    - Extra"
+        Case "list": CheckPrivilege CONST_UNLOCK_MODE_pin: For J = 1 To ListStringLength(FILEDATA)
+                Map$ = ListStringGet(FILEDATA, J)
+                Print IntegerToHex$(J); ": "; MapGetKey(Map$, CONST_ENTRY_identifier)
+                If Len(MapGetKey(Map$, CONST_ENTRY_password)) Then Print "    - Password"
+                If ListStringLength(MapGetKey(Map$, CONST_ENTRY_backup_code)) Then Print "    - Backup Codes: " + _ToStr$(ListStringLength(MapGetKey(Map$, CONST_ENTRY_backup_code)))
+                If Len(MapGetKey(Map$, CONST_ENTRY_totp)) Then Print "    - TOTP"
+                If Len(MapGetKey(Map$, CONST_ENTRY_extra)) Then Print "    - Extra"
             Next J
-        Case "view_everything": For J = 1 To ListStringLength(FILEDATA)
-                Map$ = Decrypt$(ListStringGet(FILEDATA, J))
-                Print IntegerToHex$(J); ": "; MapGetKey(Map$, "identifier")
-                If Len(MapGetKey(Map$, "password")) Then Print "    - Password: " + MapGetKey(Map$, "password")
-                If ListStringLength(MapGetKey(Map$, "backup_code")) Then Print "    - Backup Codes: [" + _ToStr$(ListStringLength(MapGetKey(Map$, "backup_code"))) + "]: " + ListStringPrint(MapGetKey(Map$, "backup_code"))
-                If Len(MapGetKey(Map$, "totp")) Then Print "    - TOTP: " + TOTP$(MapGetKey(Map$, "totp"))
-                If Len(MapGetKey(Map$, "extra")) Then Print "    - Extra: " + MapGetKey(Map$, "extra")
+        Case "view_everything": CheckPrivilege CONST_UNLOCK_MODE_password: For J = 1 To ListStringLength(FILEDATA)
+                Map$ = ListStringGet(FILEDATA, J)
+                Print IntegerToHex$(J); ": "; MapGetKey(Map$, CONST_ENTRY_identifier)
+                If Len(MapGetKey(Map$, CONST_ENTRY_password)) Then Print "    - Password: " + MapGetKey(Map$, CONST_ENTRY_password)
+                If ListStringLength(MapGetKey(Map$, CONST_ENTRY_backup_code)) Then Print "    - Backup Codes: [" + _ToStr$(ListStringLength(MapGetKey(Map$, CONST_ENTRY_backup_code))) + "]: " + ListStringPrint(MapGetKey(Map$, CONST_ENTRY_backup_code))
+                If Len(MapGetKey(Map$, CONST_ENTRY_totp)) Then Print "    - TOTP: " + TOTP$(MapGetKey(Map$, CONST_ENTRY_totp), 6, 30)
+                If Len(MapGetKey(Map$, CONST_ENTRY_extra)) Then Print "    - Extra: " + MapGetKey(Map$, CONST_ENTRY_extra)
             Next J
-        Case "select": SELECTED_ENTRY = GetValue(Command$(I + 1)): I = I + 1
-        Case "select_find": FIND_STRING$ = Command$(I + 1): I = I + 1
+        Case "select": CheckPrivilege CONST_UNLOCK_MODE_pin: SELECTED_ENTRY = GetValue(Command$(I + 1)): I = I + 1
+        Case "select_find": CheckPrivilege CONST_UNLOCK_MODE_pin: FIND_STRING$ = LCase$(Command$(I + 1)): I = I + 1
             SELECTED_ENTRY = 0
             For J = 1 To ListStringLength(FILEDATA)
-                Identifier$ = MapGetKey(Decrypt$(ListStringGet(FILEDATA, J)), "identifier")
-                If InStr(Identifier$, FIND_STRING$) = 0 Then _Continue
+                Identifier$ = MapGetKey(ListStringGet(FILEDATA, J), CONST_ENTRY_identifier)
+                If InStr(LCase$(Identifier$), FIND_STRING$) = 0 Then _Continue
                 Print _IIf(SELECTED_ENTRY = 0, "* ", "  ") + IntegerToHex$(J) + ": " + Identifier$
                 SELECTED_ENTRY = _IIf(SELECTED_ENTRY = 0, J, SELECTED_ENTRY)
             Next J
-        Case "rename": I = I + 1: If SELECTED_ENTRY = 0 Then InvalidEntry_Error: Exit Select
-            Map$ = Decrypt$(ListStringGet(FILEDATA, SELECTED_ENTRY))
-            MapSetKey Map$, "identifier", Command$(I)
-            ListStringEdit FILEDATA, Encrypt$(Map$), SELECTED_ENTRY
-        Case "delete": ListStringDelete FILEDATA, GetValue(Command$(I + 1)): I = I + 1
+        Case "rename": CheckPrivilege CONST_UNLOCK_MODE_password: I = I + 1: If SELECTED_ENTRY = 0 Then InvalidEntry_Error: Exit Select
+            Map$ = ListStringGet(FILEDATA, SELECTED_ENTRY)
+            MapSetKey Map$, CONST_ENTRY_identifier, Command$(I)
+            ListStringEdit FILEDATA, Map$, SELECTED_ENTRY
+        Case "delete": CheckPrivilege CONST_UNLOCK_MODE_password: ListStringDelete FILEDATA, GetValue(Command$(I + 1)): I = I + 1
 
         Case "password": MODE = MODE_PASSWORD
         Case "backup_code": MODE = MODE_BACKUP_CODE
@@ -71,114 +130,124 @@ For I = 1 To _CommandCount
         Case "create": If SELECTED_ENTRY = 0 Or SELECTED_ENTRY > ListStringLength(FILEDATA) Then
                 Print RandomPassword$(GetValue(Command$(I + 1)))
             Else
-                Map$ = Decrypt$(ListStringGet(FILEDATA, SELECTED_ENTRY))
+                CheckPrivilege CONST_UNLOCK_MODE_password
+                Map$ = ListStringGet(FILEDATA, SELECTED_ENTRY)
                 RP$ = RandomPassword$(GetValue(Command$(I + 1)))
                 Select Case MODE
-                    Case MODE_PASSWORD, MODE_EXTRA: MapSetKey Map$, "password", RP$
+                    Case MODE_PASSWORD, MODE_EXTRA: MapSetKey Map$, CONST_ENTRY_password, RP$
                     Case MODE_BACKUP_CODE, MODE_TOTP: InvalidAttribute_Error
                 End Select
-                ListStringEdit FILEDATA, Encrypt$(Map$), SELECTED_ENTRY
+                ListStringEdit FILEDATA, Map$, SELECTED_ENTRY
             End If
             I = I + 1
-        Case "set":
+        Case "set": CheckPrivilege CONST_UNLOCK_MODE_password
             If SELECTED_ENTRY = 0 Or SELECTED_ENTRY > ListStringLength(FILEDATA) Then InvalidEntry_Error: Exit Select
-            Map$ = Decrypt$(ListStringGet(FILEDATA, SELECTED_ENTRY))
+            Map$ = ListStringGet(FILEDATA, SELECTED_ENTRY)
             Select Case MODE
-                Case MODE_PASSWORD: MapSetKey Map$, "password", Command$(I + 1): I = I + 1
-                Case MODE_BACKUP_CODE: BACKUP_CODES$ = MapGetKey(Map$, "backup_code")
+                Case MODE_PASSWORD: MapSetKey Map$, CONST_ENTRY_password, Command$(I + 1): I = I + 1
+                Case MODE_BACKUP_CODE: BACKUP_CODES$ = MapGetKey(Map$, CONST_ENTRY_backup_code)
                     ListStringAdd BACKUP_CODES$, Command$(I + 1): I = I + 1
-                    MapSetKey Map$, "backup_code", BACKUP_CODES$
-                Case MODE_TOTP: MapSetKey Map$, "totp", Base32Decode$(Command$(I + 1)): I = I + 1
-                Case MODE_EXTRA: MapSetKey Map$, "extra", Command$(I + 1): I = I + 1
+                    MapSetKey Map$, CONST_ENTRY_backup_code, BACKUP_CODES$
+                Case MODE_TOTP: MapSetKey Map$, CONST_ENTRY_totp, Base32Decode$(Command$(I + 1)): I = I + 1
+                Case MODE_EXTRA: MapSetKey Map$, CONST_ENTRY_extra, Command$(I + 1): I = I + 1
             End Select
-            ListStringEdit FILEDATA, Encrypt$(Map$), SELECTED_ENTRY
-        Case "load":
+            ListStringEdit FILEDATA, Map$, SELECTED_ENTRY
+        Case "load": CheckPrivilege CONST_UNLOCK_MODE_password
             If SELECTED_ENTRY = 0 Or SELECTED_ENTRY > ListStringLength(FILEDATA) Then InvalidEntry_Error: Exit Select
-            Map$ = Decrypt$(ListStringGet(FILEDATA, SELECTED_ENTRY))
+            Map$ = ListStringGet(FILEDATA, SELECTED_ENTRY)
             FILE$ = Command$(I + 1): I = I + 1
             If _FileExists(FILE$) = 0 Then FILE$ = _StartDir$ + "\" + FILE$
             If _FileExists(FILE$) = 0 Then InvalidFile_Error: Exit Select
             FILE$ = _ReadFile$(FILE$)
             Select Case MODE
-                Case MODE_PASSWORD: MapSetKey Map$, "password", FILE$
-                Case MODE_BACKUP_CODE: BACKUP_CODES$ = MapGetKey(Map$, "backup_code")
+                Case MODE_PASSWORD: MapSetKey Map$, CONST_ENTRY_password, FILE$
+                Case MODE_BACKUP_CODE: BACKUP_CODES$ = MapGetKey(Map$, CONST_ENTRY_backup_code)
                     ListStringAdd BACKUP_CODES$, FILE$
-                    MapSetKey Map$, "backup_code", BACKUP_CODES$
-                Case MODE_TOTP: MapSetKey Map$, "totp", Base32Decode$(FILE$)
-                Case MODE_EXTRA: MapSetKey Map$, "extra", FILE$
+                    MapSetKey Map$, CONST_ENTRY_backup_code, BACKUP_CODES$
+                Case MODE_TOTP: MapSetKey Map$, CONST_ENTRY_totp, Base32Decode$(FILE$)
+                Case MODE_EXTRA: MapSetKey Map$, CONST_ENTRY_extra, FILE$
             End Select
-            ListStringEdit FILEDATA, Encrypt$(Map$), SELECTED_ENTRY
-        Case "remove", "clear":
+            ListStringEdit FILEDATA, Map$, SELECTED_ENTRY
+        Case "remove", "clear": CheckPrivilege CONST_UNLOCK_MODE_password
             If SELECTED_ENTRY = 0 Or SELECTED_ENTRY > ListStringLength(FILEDATA) Then InvalidEntry_Error: Exit Select
-            Map$ = Decrypt$(ListStringGet(FILEDATA, SELECTED_ENTRY))
+            Map$ = ListStringGet(FILEDATA, SELECTED_ENTRY)
             Select Case MODE
-                Case MODE_PASSWORD: MapSetKey Map$, "password", ""
-                Case MODE_BACKUP_CODE: MapSetKey Map$, "backup_code", ListStringNew
-                Case MODE_TOTP: MapSetKey Map$, "totp", ""
-                Case MODE_EXTRA: MapSetKey Map$, "extra", ""
+                Case MODE_PASSWORD: MapSetKey Map$, CONST_ENTRY_password, ""
+                Case MODE_BACKUP_CODE: MapSetKey Map$, CONST_ENTRY_backup_code, ListStringNew
+                Case MODE_TOTP: MapSetKey Map$, CONST_ENTRY_totp, ""
+                Case MODE_EXTRA: MapSetKey Map$, CONST_ENTRY_extra, ""
             End Select
-            ListStringEdit FILEDATA, Encrypt$(Map$), SELECTED_ENTRY
-        Case "peek":
+            ListStringEdit FILEDATA, Map$, SELECTED_ENTRY
+        Case "peek": CheckPrivilege CONST_UNLOCK_MODE_pin
             If SELECTED_ENTRY = 0 Or SELECTED_ENTRY > ListStringLength(FILEDATA) Then InvalidEntry_Error: Exit Select
-            Map$ = Decrypt$(ListStringGet(FILEDATA, SELECTED_ENTRY))
+            Map$ = ListStringGet(FILEDATA, SELECTED_ENTRY)
             Select Case MODE
-                Case MODE_PASSWORD: Print MapGetKey(Map$, "password")
-                Case MODE_BACKUP_CODE: BACKUP_CODES$ = MapGetKey(Map$, "backup_code")
+                Case MODE_PASSWORD: Print MapGetKey(Map$, CONST_ENTRY_password)
+                Case MODE_BACKUP_CODE: BACKUP_CODES$ = MapGetKey(Map$, CONST_ENTRY_backup_code)
                     If ListStringLength(BACKUP_CODES$) Then
                         Print ListStringPrint(BACKUP_CODES$)
                     Else
                         Print "No Backup Codes Available"
                     End If
-                    MapSetKey Map$, "backup_code", BACKUP_CODES$
-                Case MODE_TOTP: Print TOTP$(MapGetKey(Map$, "totp"))
-                Case MODE_EXTRA: Print MapGetKey(Map$, "extra")
+                    MapSetKey Map$, CONST_ENTRY_backup_code, BACKUP_CODES$
+                Case MODE_TOTP: Print TOTP$(MapGetKey(Map$, CONST_ENTRY_totp), 6, 30)
+                Case MODE_EXTRA: Print MapGetKey(Map$, CONST_ENTRY_extra)
             End Select
-            ListStringEdit FILEDATA, Encrypt$(Map$), SELECTED_ENTRY
-        Case "view":
+            ListStringEdit FILEDATA, Map$, SELECTED_ENTRY
+        Case "view": CheckPrivilege CONST_UNLOCK_MODE_password
             If SELECTED_ENTRY = 0 Or SELECTED_ENTRY > ListStringLength(FILEDATA) Then InvalidEntry_Error: Exit Select
-            Map$ = Decrypt$(ListStringGet(FILEDATA, SELECTED_ENTRY))
+            Map$ = ListStringGet(FILEDATA, SELECTED_ENTRY)
             Select Case MODE
-                Case MODE_PASSWORD: Print MapGetKey(Map$, "password")
-                Case MODE_BACKUP_CODE: BACKUP_CODES$ = MapGetKey(Map$, "backup_code")
+                Case MODE_PASSWORD: Print MapGetKey(Map$, CONST_ENTRY_password)
+                Case MODE_BACKUP_CODE: BACKUP_CODES$ = MapGetKey(Map$, CONST_ENTRY_backup_code)
                     If ListStringLength(BACKUP_CODES$) Then
                         Print ListStringGet(BACKUP_CODES$, 1)
                         ListStringDelete BACKUP_CODES$, 1
                     Else
                         Print "No Backup Codes Available"
                     End If
-                    MapSetKey Map$, "backup_code", BACKUP_CODES$
-                Case MODE_TOTP: Print TOTP$(MapGetKey(Map$, "totp"))
-                Case MODE_EXTRA: Print MapGetKey(Map$, "extra")
+                    MapSetKey Map$, CONST_ENTRY_backup_code, BACKUP_CODES$
+                Case MODE_TOTP: Print TOTP$(MapGetKey(Map$, CONST_ENTRY_totp), 6, 30)
+                Case MODE_EXTRA: Print MapGetKey(Map$, CONST_ENTRY_extra)
             End Select
-            ListStringEdit FILEDATA, Encrypt$(Map$), SELECTED_ENTRY
-        Case "copy":
+            ListStringEdit FILEDATA, Map$, SELECTED_ENTRY
+        Case "copy": CheckPrivilege CONST_UNLOCK_MODE_pin
             If SELECTED_ENTRY = 0 Or SELECTED_ENTRY > ListStringLength(FILEDATA) Then InvalidEntry_Error: Exit Select
-            Map$ = Decrypt$(ListStringGet(FILEDATA, SELECTED_ENTRY))
+            Map$ = ListStringGet(FILEDATA, SELECTED_ENTRY)
             Select Case MODE
-                Case MODE_PASSWORD: _Clipboard$ = MapGetKey(Map$, "password")
-                Case MODE_BACKUP_CODE: BACKUP_CODES$ = MapGetKey(Map$, "backup_code")
+                Case MODE_PASSWORD: _Clipboard$ = MapGetKey(Map$, CONST_ENTRY_password)
+                Case MODE_BACKUP_CODE: BACKUP_CODES$ = MapGetKey(Map$, CONST_ENTRY_backup_code)
                     If ListStringLength(BACKUP_CODES$) Then
                         _Clipboard$ = ListStringGet(BACKUP_CODES$, 1)
                         ListStringDelete BACKUP_CODES$, 1
                     Else
                         _Clipboard$ = ""
                     End If
-                    MapSetKey Map$, "backup_code", BACKUP_CODES$
-                Case MODE_TOTP: _Clipboard$ = TOTP$(MapGetKey(Map$, "totp"))
-                Case MODE_EXTRA: _Clipboard$ = MapGetKey(Map$, "extra")
+                    MapSetKey Map$, CONST_ENTRY_backup_code, BACKUP_CODES$
+                Case MODE_TOTP: _Clipboard$ = TOTP$(MapGetKey(Map$, CONST_ENTRY_totp), 6, 30)
+                Case MODE_EXTRA: _Clipboard$ = MapGetKey(Map$, CONST_ENTRY_extra)
             End Select
-            ListStringEdit FILEDATA, Encrypt$(Map$), SELECTED_ENTRY
+            ListStringEdit FILEDATA, Map$, SELECTED_ENTRY
         Case Else:
             ShowHelp
     End Select
 Next I
-_WriteFile "pwddata3", FILEDATA
+If UnlockMode Then
+    MapSetKey FILEMETADATA, CONST_FILE_METADATA_file_data_hash, MKL$(crc32(FILEDATA))
+    MapSetKey FILEMETADATA, CONST_FILE_METADATA_nonce, NewNonce$
+    MapSetKey FILEMETADATA, CONST_FILE_METADATA_file_data, Encrypt$(FILEDATA, SHA512$(Master_Password_Hash$ + Salt$))
+End If
+_WriteFile "pwddata3", FILEMETADATA
 System
 Sub ShowHelp
-    Print "pwdmgr3 - Password Manager 3"
-    Print "Syntax: " + Command$(0) + " [Unlocks] [Commands] [Attributes] [Options] [Arguments]"
-    Print "Unlocks:"
+    Print "pwdmgr3 - Password Manager " + PWDMGR3_VERSION$
+    Print "Syntax: " + Command$(0) + " [Session] [Commands] [Attributes] [Options] [Arguments]"
+    Print "Session:"
     Print "  pwd []"
+    Print "  pin []"
+    Print "  new_pwd []"
+    Print "  new_pin []"
+    Print "  lock"
     Print "Commands:"
     Print "  add []"
     Print "  insert [] []"
@@ -202,18 +271,79 @@ Sub ShowHelp
     Print "  view"
     Print "  copy"
 End Sub
+Sub ReadFileData (F$)
+    FILEMETADATA = _ReadFile$(F$)
+    FILEDATA = MapGetKey(FILEMETADATA, CONST_FILE_METADATA_file_data)
+    Salt$ = MapGetKey(FILEMETADATA, CONST_FILE_METADATA_salt)
+    Nonce$ = MapGetKey(FILEMETADATA, CONST_FILE_METADATA_nonce)
+End Sub
 Sub NewFileData
+    FILEMETADATA = MapNew
+    MapSetKey FILEMETADATA, CONST_FILE_METADATA_master_password_hash, ""
+    MapSetKey FILEMETADATA, CONST_FILE_METADATA_pin_hash, ""
+    Salt$ = RandomString$(64): MapSetKey FILEMETADATA, CONST_FILE_METADATA_salt, Salt$
+    MapSetKey FILEMETADATA, CONST_FILE_METADATA_file_data_hash, MKL$(crc32(ListStringNew))
+    MapSetKey FILEMETADATA, CONST_FILE_METADATA_nonce, NewNonce$
+    MapSetKey FILEMETADATA, CONST_FILE_METADATA_version, PWDMGR3_VERSION$
+    MapSetKey FILEMETADATA, CONST_FILE_METADATA_creation_time, _MK$(_Integer64, UnixTime)
     FILEDATA = ListStringNew
+    MapSetKey FILEMETADATA, CONST_FILE_METADATA_file_data, FILEDATA$
+End Sub
+Sub TryDecryption (NewUnlockMode~%%) Static
+    If UnlockMode Then Exit Sub
+    tmpFILEDATA$ = Decrypt$(FILEDATA, SHA512$(Master_Password_Hash$ + Salt$))
+    If crc32(tmpFILEDATA$) Xor CVL(MapGetKey(FILEMETADATA, CONST_FILE_METADATA_file_data_hash)) Then
+        Print "Unsuccessful Decryption"
+        System
+    Else
+        FILEDATA = tmpFILEDATA$
+        UnlockMode = NewUnlockMode~%%
+        UpdateSession
+    End If
+    tmpFILEDATA$ = ""
+End Sub
+Sub CheckPrivilege (NeededUnlockMode~%%) Static
+    If NeededUnlockMode~%% > UnlockMode Then
+        Print _IIf(UnlockMode, "Not sufficient privileges", "Access Denied")
+    End If
+End Sub
+Sub LoadSession Static
+    If UnlockMode Then Exit Sub
+    Hash$ = _ReadFile$(".pwdmgr3_session")
+    __Key$ = TOTP$(SHA512$(UnixTimeToString$(SessionTimeLimit)), 8, SessionTimeLimit)
+    If _StrCmp(Mid$(Hash$, 1, 64), SHA512$(__Key$)) Then
+        Kill ".pwdmgr3_session"
+        Exit Sub
+    End If
+    MPH$ = BlockXor$(Mid$(Hash$, 129), MKL$(Val(__Key$)))
+    If _StrCmp(Mid$(Hash$, 65, 64), SHA512$(MPH$)) Then
+        Kill ".pwdmgr3_session"
+        Exit Sub
+    End If
+    Master_Password_Hash$ = MPH$
+    TryDecryption CONST_UNLOCK_MODE_pin
+End Sub
+Sub UpdateSession Static
+    If UnlockMode = 0 Then Exit Sub
+    __Key$ = TOTP$(SHA512$(UnixTimeToString$(SessionTimeLimit)), 8, SessionTimeLimit)
+    TOTP_Key$ = SHA512(__Key$)
+    Master_Password_Fingerprint$ = SHA512(Master_Password_Hash$)
+    Encrypted_Master_Password_Hash$ = BlockXor$(Master_Password_Hash$, MKL$(Val(__Key$)))
+    _WriteFile ".pwdmgr3_session", TOTP_Key$ + Master_Password_Fingerprint$ + Encrypted_Master_Password_Hash$
 End Sub
 Sub InvalidEntry_Error
-    Print "Invalid Entry"
+    Print "xxx Invalid Entry xxx"
 End Sub
 Sub InvalidFile_Error
-    Print "Invalid File"
+    Print "xxx Invalid File xxx"
 End Sub
 Sub InvalidAttribute_Error
-    Print "Invalid Attribute"
+    Print "xxx Invalid Attribute xxx"
 End Sub
+Function NewNonce$ Static
+    Nonce$ = MKL$(crc32(RandomString$(64)))
+    NewNonce$ = Nonce$
+End Function
 Function RandomPassword$ (__L~&) Static
     Static __RP$, __I~&
     __RPS$ = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()_+-=[]/"
@@ -223,29 +353,40 @@ Function RandomPassword$ (__L~&) Static
     Next __I~&
     RandomPassword$ = __RP$
 End Function
-Function Encrypt$ (__I$) Static
-    Static __J As _Unsigned _Bit * 6
-    Static __S$, __I~&
-    __J = 0
-    __S$ = SHA512$(PASSWORD$)
+Function BlockXor$ (__I$, __J$) Static ' Repetitive overlap __J$ on __I$
+    Static __T$, __L~&, __I~&, __J~&
+    __T$ = String$(Len(__I$), 0)
+    __L~& = Len(__J$)
+    For __I~& = 1 To Len(__I$)
+        __J~& = _IIf(__J~& >= __L~&, 1, __J~& + 1) ' __J~& = __J~& Mod __L~& + 1
+        Asc(__T$, __I~&) = Asc(__I$, __I~&) Xor Asc(__J$, __J~&)
+    Next __I~&
+    BlockXor$ = __T$
+    __T$ = ""
+End Function
+Function Encrypt$ (__I$, __P$) Static
+    Static __I~&, __O$, __Block$64
+    Static As _Unsigned _Bit * 6 __J: __J = 0
     __O$ = String$(Len(__I$), 0)
     For __I~& = 1 To Len(__I$)
-        Asc(__O$, __I~&) = Asc(__I$, __I~&) Xor Asc(__S$, 1 + __J)
+        If __J = 0 Then __Block$64 = SHA512(__P$ + Nonce$ + MKL$(_ShR(__I~&, 6)))
+        Asc(__O$, __I~&) = Asc(__I$, __I~&) Xor Asc(__Block$64, 1 + __J)
         __J = __J + 1
     Next __I~&
     Encrypt$ = __O$
+    __O$ = ""
 End Function
-Function Decrypt$ (__I$) Static
-    Static __J As _Unsigned _Bit * 6
-    Static __S$, __I~&
-    __J = 0
-    __S$ = SHA512$(PASSWORD$)
+Function Decrypt$ (__I$, __P$) Static
+    Static __I~&, __O$, __Block$64
+    Static As _Unsigned _Bit * 6 __J: __J = 0
     __O$ = String$(Len(__I$), 0)
     For __I~& = 1 To Len(__I$)
-        Asc(__O$, __I~&) = Asc(__I$, __I~&) Xor Asc(__S$, 1 + __J)
+        If __J = 0 Then __Block$64 = SHA512(__P$ + Nonce$ + MKL$(_ShR(__I~&, 6)))
+        Asc(__O$, __I~&) = Asc(__I$, __I~&) Xor Asc(__Block$64, 1 + __J)
         __J = __J + 1
     Next __I~&
     Decrypt$ = __O$
+    __O$ = ""
 End Function
 '$Include:'include\dsa\liststring.bas'
 '$Include:'include\dsa\map.bas'
@@ -259,3 +400,8 @@ End Function
 '$Include:'include\base32decode.bm'
 '$Include:'include\putbitbuffermsb.bm'
 '$Include:'include\sha512.bm'
+'$Include:'include\crc32.bm'
+'$Include:'include\randomstring.bm'
+Function UnixTimeToString$ (TimeInterval~&) Static
+    UnixTimeToString$ = _MK$(_Integer64, UnixTime / TimeInterval~&)
+End Function

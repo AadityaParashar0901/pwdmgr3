@@ -6,15 +6,21 @@ A password manager made to store passwords, backup codes, totp codes, and an ext
 * Can store credentials for many accounts
 * Can store four types of codes for each account
 * Can store a list of backup codes
-* Encrypted File: any user can encrypt and add entries, with no way for others to decrypt it.
-* Has built-in command line arguments' scripting enabled: User can provide a list of commands in the command prompt.
+* Encrypted File: any user can encrypt and add entries, with no way for others to decrypt it
+* Has built-in command line arguments' scripting enabled: User can provide a list of commands in the command prompt
+* Multi-authentication system: users can unlock using Password / Pin, both giving different privileges to users
+* Decrypted sessions: users can work on unlocked vault for atmost a certain time
 
 # Syntax
-pwdmgr3 \[Unlocking\] \[Commands\] \[Attributes\] \[Options\] \[Arguments\]
+pwdmgr3 \[Session Management\] \[Commands\] \[Attributes\] \[Options\] \[Arguments\]
 
-## Unlocking
+## Session Management
 * pwd - Password
-_Will implement Pin, Totp unlocking later_
+* pin - Pin
+* new\_pwd - Set a new Password
+* new\_pin - Set a new Pin
+* lock - Forcefully lock the session, even before the time is up.
+_Will implement Totp unlocking later_
 
 ## Commands
 * add - Add an account entry
@@ -23,6 +29,7 @@ _Will implement Pin, Totp unlocking later_
 * view\_everything - View all accounts and there attributes
 * select - Select an account by ID to operate on it's attributes
 * select\_find - Select an account by Finding
+* rename - Rename an account identifier
 * delete - Delete an account entry
 
 ## Attributes
