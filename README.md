@@ -31,6 +31,8 @@ _Will implement Totp unlocking later_
 * select\_find - Select an account by Finding
 * rename - Rename an account identifier
 * delete - Delete an account entry
+* import - Import entries from another database
+* export - Export entries to another database
 
 ## Attributes
 * password - Operate on Password

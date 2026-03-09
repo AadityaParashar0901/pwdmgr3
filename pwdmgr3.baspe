@@ -121,6 +121,34 @@ For I = 1 To _CommandCount
             MapSetKey Map$, CONST_ENTRY_identifier, Command$(I)
             ListStringEdit FILEDATA, Map$, SELECTED_ENTRY
         Case "delete": CheckPrivilege CONST_UNLOCK_MODE_password: ListStringDelete FILEDATA, GetValue(Command$(I + 1)): I = I + 1
+        Case "import": tmpFileData$ = _ReadFile$(Command$(I + 1)): I = I + 2
+            __version = CVI(Left$(tmpFileData$, 2))
+            tmpFileData$ = Mid$(tmpFileData$, 3)
+            Select Case __version
+                Case 1: tmpFileData$ = _Inflate$(_Base64Decode$(tmpFileData$))
+                    For J = 1 To ListStringLength(tmpFileData$)
+                        Map$ = MapNew
+                        __Map$ = ListStringGet(tmpFileData$, J)
+                        MapSetKey Map$, CONST_ENTRY_identifier, MapGetKey(__Map$, "identifier")
+                        MapSetKey Map$, CONST_ENTRY_password, MapGetKey(__Map$, "password")
+                        MapSetKey Map$, CONST_ENTRY_backup_code, MapGetKey(__Map$, "backup_code")
+                        MapSetKey Map$, CONST_ENTRY_totp, MapGetKey(__Map$, "totp")
+                        MapSetKey Map$, CONST_ENTRY_extra, MapGetKey(__Map$, "extra")
+                        ListStringAdd FILEDATA, Map$
+                    Next J
+                Case 2: __SHA512$ = Left$(tmpFileData$, 64)
+                    tmpFileData$ = BlockXor(Mid$(tmpFileData$, 65), SHA512$(Command$(I)))
+                    If SHA512$(tmpFileData$) <> __SHA512$ Then
+                        Print "Error while Importing"
+                    Else
+                        FILEDATA = ListStringAppend(FILEDATA, tmpFileData$)
+                    End If
+            End Select
+            tmpFileData$ = ""
+        Case "export": tmpFileData$ = FILEDATA: I = I + 2
+            tmpFileData$ = BlockXor(tmpFileData$, SHA512$(Command$(I))) ' Xor with the temporary password
+            _WriteFile Command$(I - 1), MKI$(2) + SHA512$(FILEDATA) + tmpFileData$
+            tmpFileData$ = ""
 
         Case "password": MODE = MODE_PASSWORD
         Case "backup_code": MODE = MODE_BACKUP_CODE
@@ -257,6 +285,8 @@ Sub ShowHelp
     Print "  select_find []"
     Print "  rename []"
     Print "  delete []"
+    Print "  import [file] [password]"
+    Print "  export [file] [password]"
     Print "Attributes:"
     Print "  password"
     Print "  backup_code"
