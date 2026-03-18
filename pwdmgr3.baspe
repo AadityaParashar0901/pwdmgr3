@@ -161,7 +161,7 @@ For I = 1 To _CommandCount
                         Print "No Backup Codes Available"
                     End If
                     MapSetKey Map$, "backup_code", BACKUP_CODES$
-                Case MODE_TOTP: Print TOTP$(MapGetKey(Map$, "totp"))
+                Case MODE_TOTP: T$ = TOTP$(MapGetKey(Map$, "totp")): Print Left$(T$, 3) + " " + Right$(T$, 3)
                 Case MODE_EXTRA: Print MapGetKey(Map$, "extra")
             End Select
             ListStringEdit FILEDATA, Encrypt$(Map$), SELECTED_ENTRY

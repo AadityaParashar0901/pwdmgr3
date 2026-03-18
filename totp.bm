@@ -33,7 +33,7 @@ Function TOTP$ (secret$)
     H$ = HMAC$(secret$, Reverse$(ctr$))
     code~& = TruncateTOTP~&(H$)
     T$ = Right$("000000" + _ToStr$(code~&), 6)
-    TOTP$ = Left$(T$, 3) + " " + Right$(T$, 3)
+    TOTP$ = T$
 End Function
 
 Function SHA1ReformatBigEndian$ (T$)
