@@ -1,7 +1,9 @@
 $Console:Only
 Randomize Timer
 Const PWDMGR3_VERSION$ = "3.1"
+
 Const SessionTimeLimit = 120
+Const SessionFile = ".pwdmgr3_session"
 
 ' File Metadata Codes
 Const CONST_META_master_password_hash = Chr$(1)
@@ -31,18 +33,30 @@ Dim Shared As String FILEMETADATA, FILEDATA
 Dim Shared Salt$, Nonce$, UnlockMode As _Unsigned _Byte
 Dim Shared Master_Password_Hash$
 
-If _FileExists("pwddata3") Then ReadFileData "pwddata3" Else NewFileData
-If _FileExists(".pwdmgr3_session") Then LoadSession
+If _FileExists("pwddata3") Then
+    ReadFileData "pwddata3"
+    If _FileExists(SessionFile) Then LoadSession
+Else
+    NewFileData
+    If _FileExists(SessionFile) Then Kill SessionFile
+End If
 If _CommandCount = 0 Then ShowHelp
 For I = 1 To _CommandCount
     Select Case Command$(I)
         Case "pwd": Master_Password$ = Command$(I + 1): I = I + 1
-            Master_Password_Hash$ = SHA512(Master_Password$ + Salt$)
+            tmp_Master_Password_Hash$ = SHA512(Master_Password$ + Salt$)
             If MapGetKey(FILEMETADATA, CONST_META_master_password_hash) = "" Then
                 MapSetKey FILEMETADATA, CONST_META_master_password_hash, SHA512(Master_Password$)
+                Master_Password_Hash$ = tmp_Master_Password_Hash$
                 UnlockMode = CONST_UNLOCK_MODE_password
             ElseIf MapGetKey(FILEMETADATA, CONST_META_master_password_hash) = SHA512(Master_Password$) Then
-                If UnlockMode = 0 Then TryDecryption CONST_UNLOCK_MODE_password
+                If UnlockMode < CONST_UNLOCK_MODE_password Then
+                    Master_Password_Hash$ = tmp_Master_Password_Hash$
+                    TryEncryption
+                    TryDecryption CONST_UNLOCK_MODE_password
+                Else
+                    Print "Already Decrypted"
+                End If
             Else
                 Print "Incorrect Password"
             End If
@@ -57,7 +71,7 @@ For I = 1 To _CommandCount
         Case "new_pwd": Master_Password$ = Command$(I + 1): I = I + 1
             If UnlockMode = 0 Then
                 Print "Decrypt First"
-                System
+                Exit Select
             End If
             Master_Password_Hash$ = SHA512(Master_Password$ + Salt$)
             MapSetKey FILEMETADATA, CONST_META_master_password_hash, SHA512(Master_Password$)
@@ -66,10 +80,10 @@ For I = 1 To _CommandCount
         Case "new_pin": Master_Pin$ = Command$(I + 1): I = I + 1
             If UnlockMode = 0 Then
                 Print "Decrypt First"
-                System
+                Exit Select
             End If
             MapSetKey FILEMETADATA, CONST_META_pin_hash, BlockXor$(Master_Password_Hash$, SHA512(Master_Pin$ + Salt$))
-        Case "lock": Kill ".pwdmgr3_session"
+        Case "lock": Kill SessionFile
 
         Case "add": CheckPrivilege CONST_UNLOCK_MODE_password
             Map$ = MapNew
@@ -286,11 +300,7 @@ For I = 1 To _CommandCount
             ShowHelp
     End Select
 Next I
-If UnlockMode Then
-    MapSetKey FILEMETADATA, CONST_META_file_data_hash, MKL$(crc32(FILEDATA))
-    MapSetKey FILEMETADATA, CONST_META_nonce, NewNonce$
-    MapSetKey FILEMETADATA, CONST_META_file_data, Encrypt$(FILEDATA, SHA512$(Master_Password_Hash$ + Salt$))
-End If
+TryEncryption
 _WriteFile "pwddata3", FILEMETADATA
 System
 Sub ShowHelp
@@ -347,7 +357,7 @@ Sub NewFileData
     MapSetKey FILEMETADATA, CONST_META_file_data, FILEDATA
 End Sub
 Sub TryDecryption (NewUnlockMode~%%) Static
-    If UnlockMode Then Exit Sub
+    If UnlockMode >= NewUnlockMode~%% Then Exit Sub
     tmpFILEDATA$ = Decrypt$(FILEDATA, SHA512$(Master_Password_Hash$ + Salt$))
     If crc32(tmpFILEDATA$) Xor CVL(MapGetKey(FILEMETADATA, CONST_META_file_data_hash)) Then
         Print "Unsuccessful Decryption"
@@ -359,6 +369,13 @@ Sub TryDecryption (NewUnlockMode~%%) Static
     End If
     tmpFILEDATA$ = ""
 End Sub
+Sub TryEncryption Static
+    If UnlockMode = 0 Then Exit Sub
+    MapSetKey FILEMETADATA, CONST_META_file_data_hash, MKL$(crc32(FILEDATA))
+    MapSetKey FILEMETADATA, CONST_META_nonce, NewNonce$
+    FILEDATA = Encrypt$(FILEDATA, SHA512$(Master_Password_Hash$ + Salt$))
+    MapSetKey FILEMETADATA, CONST_META_file_data, FILEDATA
+End Sub
 Sub CheckPrivilege (NeededUnlockMode~%%) Static
     If NeededUnlockMode~%% > UnlockMode Then
         Print _IIf(UnlockMode, "Not sufficient privileges", "Access Denied")
@@ -367,15 +384,15 @@ Sub CheckPrivilege (NeededUnlockMode~%%) Static
 End Sub
 Sub LoadSession Static
     If UnlockMode Then Exit Sub
-    Hash$ = _ReadFile$(".pwdmgr3_session")
+    Hash$ = _ReadFile$(SessionFile)
     __Key$ = TOTP$(SHA512$(UnixTimeToString$(SessionTimeLimit)), 8, SessionTimeLimit)
     If _StrCmp(Mid$(Hash$, 1, 64), SHA512$(__Key$)) Then
-        Kill ".pwdmgr3_session"
+        Kill SessionFile
         Exit Sub
     End If
     MPH$ = BlockXor$(Mid$(Hash$, 129), MKL$(Val(__Key$)))
     If _StrCmp(Mid$(Hash$, 65, 64), SHA512$(MPH$)) Then
-        Kill ".pwdmgr3_session"
+        Kill SessionFile
         Exit Sub
     End If
     Master_Password_Hash$ = MPH$
@@ -387,7 +404,7 @@ Sub UpdateSession Static
     TOTP_Key$ = SHA512(__Key$)
     Master_Password_Fingerprint$ = SHA512(Master_Password_Hash$)
     Encrypted_Master_Password_Hash$ = BlockXor$(Master_Password_Hash$, MKL$(Val(__Key$)))
-    _WriteFile ".pwdmgr3_session", TOTP_Key$ + Master_Password_Fingerprint$ + Encrypted_Master_Password_Hash$
+    _WriteFile SessionFile, TOTP_Key$ + Master_Password_Fingerprint$ + Encrypted_Master_Password_Hash$
 End Sub
 Sub InvalidEntry_Error
     Print "xxx Invalid Entry xxx"
