@@ -48,3 +48,4 @@ _Will implement Totp unlocking later_
 * peek - Peek an attribute's value, do not delete anything
 * view - View an attribute's value and then delete the current Backup Code, if a backup code is viewed
 * copy - Copy an attribute's value to system clipboard
+* print - Type the attribute's value on screen after 5 seconds

@@ -160,7 +160,7 @@ For I = 1 To _CommandCount
             Else
                 CheckPrivilege CONST_UNLOCK_MODE_password
                 Map$ = ListStringGet(FILEDATA, SELECTED_ENTRY)
-                RP$ = RandomPassword$(GetValue(Command$(I + 1)))
+                If GetValue(Command$(I + 1)) = 0 Then RP$ = RandomPassword$(16) Else RP$ = RandomPassword$(GetValue(Command$(I + 1)))
                 Select Case MODE
                     Case MODE_PASSWORD, MODE_EXTRA: MapSetKey Map$, CONST_ENTRY_password, RP$
                     Case MODE_BACKUP_CODE, MODE_TOTP: InvalidAttribute_Error
@@ -256,6 +256,32 @@ For I = 1 To _CommandCount
                 Case MODE_EXTRA: _Clipboard$ = MapGetKey(Map$, CONST_ENTRY_extra)
             End Select
             ListStringEdit FILEDATA, Map$, SELECTED_ENTRY
+        Case "print": CheckPrivilege CONST_UNLOCK_MODE_pin
+            If SELECTED_ENTRY = 0 Or SELECTED_ENTRY > ListStringLength(FILEDATA) Then InvalidEntry_Error: Exit Select
+            Map$ = ListStringGet(FILEDATA, SELECTED_ENTRY)
+            Select Case MODE
+                Case MODE_PASSWORD: ToScreenPrint$ = MapGetKey(Map$, CONST_ENTRY_password)
+                Case MODE_BACKUP_CODE: BACKUP_CODES$ = MapGetKey(Map$, CONST_ENTRY_backup_code)
+                    If ListStringLength(BACKUP_CODES$) Then
+                        ToScreenPrint$ = ListStringGet(BACKUP_CODES$, 1)
+                        ListStringDelete BACKUP_CODES$, 1
+                    Else
+                        Print "No Backup Codes Available"
+                    End If
+                    MapSetKey Map$, CONST_ENTRY_backup_code, BACKUP_CODES$
+                Case MODE_TOTP: ToScreenPrint$ = TOTP$(MapGetKey(Map$, CONST_ENTRY_totp), 6, 30)
+                Case MODE_EXTRA: ToScreenPrint$ = MapGetKey(Map$, CONST_ENTRY_extra)
+            End Select
+            ListStringEdit FILEDATA, Map$, SELECTED_ENTRY
+            For T = 19 To 0 Step -1
+                _Limit 4
+                Select Case T And 3
+                    Case 0 To 2: Print ".";
+                    Case 3: Print _ToStr$(_ShR(T + 1, 2));
+                End Select
+            Next T
+            Print " Printing"
+            _ScreenPrint ToScreenPrint$
         Case Else:
             ShowHelp
     End Select
@@ -300,6 +326,7 @@ Sub ShowHelp
     Print "  peek"
     Print "  view"
     Print "  copy"
+    Print "  print"
 End Sub
 Sub ReadFileData (F$)
     FILEMETADATA = _ReadFile$(F$)
