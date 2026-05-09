@@ -1,9 +1,16 @@
 $Console:Only
 Randomize Timer
-Const PWDMGR3_VERSION$ = "3.1"
+Const PWDMGR3_VERSION$ = "3.2"
 
-Const SessionTimeLimit = 120
+$If WIN Then
+    Const Path_Seperator = "\"
+$Else
+    Const Path_Seperator = "/"
+$End If
+
+Const SessionTimeLimit = 600
 Const SessionFile = ".pwdmgr3_session"
+Const Snapshots_Directory = "pwdmgr3_snapshots"
 
 ' File Metadata Codes
 Const CONST_META_master_password_hash = Chr$(1)
@@ -164,6 +171,12 @@ For I = 1 To _CommandCount
             _WriteFile Command$(I - 1), MKI$(2) + SHA512$(FILEDATA) + tmpFileData$
             tmpFileData$ = ""
 
+        Case "snapshot": tmpFileData$ = FILEDATA
+            If _DirExists(Snapshots_Directory) = 0 Then MkDir Snapshots_Directory
+            SnapshotFile$ = Snapshots_Directory + Path_Seperator + "snapshot_" + Right$(Date$, 4) + "-" + Mid$(Date$, 4, 2) + "-" + Left$(Date$, 2) + "_" + Left$(Time$, 2) + "-" + Mid$(Time$, 4, 2) + "-" + Right$(Time$, 2) + ".pwddata3"
+            _WriteFile SnapshotFile$, _ReadFile$("pwddata3")
+            Print "Taken snapshot to file: " + SnapshotFile$
+
         Case "password": MODE = MODE_PASSWORD
         Case "backup_code": MODE = MODE_BACKUP_CODE
         Case "totp": MODE = MODE_TOTP
@@ -272,7 +285,7 @@ For I = 1 To _CommandCount
             ListStringEdit FILEDATA, Map$, SELECTED_ENTRY
         Case "print": CheckPrivilege CONST_UNLOCK_MODE_pin
             If SELECTED_ENTRY = 0 Or SELECTED_ENTRY > ListStringLength(FILEDATA) Then InvalidEntry_Error: Exit Select
-            Map$ = ListStringGet(FILEDATA, SELECTED_ENTRY)
+            Map$ = ListStringGet(FILEDATA, SELECTED_ENTRY): ToScreenPrint$ = ""
             Select Case MODE
                 Case MODE_PASSWORD: ToScreenPrint$ = MapGetKey(Map$, CONST_ENTRY_password)
                 Case MODE_BACKUP_CODE: BACKUP_CODES$ = MapGetKey(Map$, CONST_ENTRY_backup_code)
@@ -287,15 +300,17 @@ For I = 1 To _CommandCount
                 Case MODE_EXTRA: ToScreenPrint$ = MapGetKey(Map$, CONST_ENTRY_extra)
             End Select
             ListStringEdit FILEDATA, Map$, SELECTED_ENTRY
-            For T = 19 To 0 Step -1
-                _Limit 4
-                Select Case T And 3
-                    Case 0 To 2: Print ".";
-                    Case 3: Print _ToStr$(_ShR(T + 1, 2));
-                End Select
-            Next T
-            Print " Printing"
-            _ScreenPrint ToScreenPrint$
+            If Len(ToScreenPrint$) Then
+                For T = 19 To 0 Step -1
+                    _Limit 4
+                    Select Case T And 3
+                        Case 0 To 2: Print ".";
+                        Case 3: Print _ToStr$(_ShR(T + 1, 2));
+                    End Select
+                Next T
+                Print " Printing"
+                _ScreenPrint ToScreenPrint$
+            End If
         Case Else:
             ShowHelp
     End Select
@@ -323,6 +338,8 @@ Sub ShowHelp
     Print "  delete []"
     Print "  import [file] [password]"
     Print "  export [file] [password]"
+    Print "Snapshots:"
+    Print "  snapshot"
     Print "Attributes:"
     Print "  password"
     Print "  backup_code"
