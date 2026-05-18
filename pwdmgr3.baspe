@@ -52,11 +52,13 @@ For I = 1 To _CommandCount
     Select Case Command$(I)
         Case "pwd": Master_Password$ = Command$(I + 1): I = I + 1
             tmp_Master_Password_Hash$ = SHA512(Master_Password$ + Salt$)
-            If MapGetKey(FILEMETADATA, CONST_META_master_password_hash) = "" Then
+            File_MPH$ = MapGetKey(FILEMETADATA, CONST_META_master_password_hash)
+            SHA_MPH$ = SHA512(Master_Password$)
+            If Len(File_MPH$) = 0 Then
                 MapSetKey FILEMETADATA, CONST_META_master_password_hash, SHA512(Master_Password$)
                 Master_Password_Hash$ = tmp_Master_Password_Hash$
                 UnlockMode = CONST_UNLOCK_MODE_password
-            ElseIf MapGetKey(FILEMETADATA, CONST_META_master_password_hash) = SHA512(Master_Password$) Then
+            ElseIf File_MPH$ = SHA_MPH$ Then
                 If UnlockMode < CONST_UNLOCK_MODE_password Then
                     Master_Password_Hash$ = tmp_Master_Password_Hash$
                     TryEncryption
@@ -68,11 +70,13 @@ For I = 1 To _CommandCount
                 Print "Incorrect Password"
             End If
         Case "pin": Master_Pin$ = Command$(I + 1): I = I + 1
-            If MapGetKey(FILEMETADATA, CONST_META_pin_hash) = "" Then
+            File_PH$ = MapGetKey(FILEMETADATA, CONST_META_pin_hash)
+            tmp_Master_Pin_Hash$ = SHA512$(Master_Pin$ + Salt$)
+            If Len(File_PH$) = 0 Then
                 MapSetKey FILEMETADATA, CONST_META_pin_hash, BlockXor$(Master_Password_Hash$, SHA512(Master_Pin$ + Salt$))
                 UnlockMode = _Max(UnlockMode, CONST_UNLOCK_MODE_pin)
             ElseIf UnlockMode = 0 Then
-                Master_Password_Hash$ = BlockXor$(MapGetKey(FILEMETADATA, CONST_META_pin_hash), SHA512$(Master_Pin$ + Salt$))
+                Master_Password_Hash$ = BlockXor$(File_PH$, tmp_Master_Pin_Hash$)
                 TryDecryption CONST_UNLOCK_MODE_pin
             End If
         Case "new_pwd": Master_Password$ = Command$(I + 1): I = I + 1
@@ -90,7 +94,7 @@ For I = 1 To _CommandCount
                 Exit Select
             End If
             MapSetKey FILEMETADATA, CONST_META_pin_hash, BlockXor$(Master_Password_Hash$, SHA512(Master_Pin$ + Salt$))
-        Case "lock": Kill SessionFile
+        Case "lock": If _FileExists(SessionFile) Then Kill SessionFile
 
         Case "add": CheckPrivilege CONST_UNLOCK_MODE_password
             Map$ = MapNew
@@ -159,7 +163,7 @@ For I = 1 To _CommandCount
                     Next J
                 Case 2: __SHA512$ = Left$(tmpFileData$, 64)
                     tmpFileData$ = BlockXor(Mid$(tmpFileData$, 65), SHA512$(Command$(I)))
-                    If SHA512$(tmpFileData$) <> __SHA512$ Then
+                    If _StrCmp(SHA512$(tmpFileData$), __SHA512$) Then
                         Print "Error while Importing"
                     Else
                         FILEDATA = ListStringAppend(FILEDATA, tmpFileData$)
@@ -480,20 +484,21 @@ Function Decrypt$ (__I$, __P$) Static
     Decrypt$ = __O$
     __Block$64 = "": __O$ = ""
 End Function
-'$Include:'include\dsa\liststring.bas'
-'$Include:'include\dsa\map.bas'
+'$Include:'include\dsa\ListString.bas'
+'$Include:'include\dsa\Map.bas'
 '$Include:'totp.bm'
 '$Include:'include\sha1.bas'
 '$Include:'include\string.bm'
 '$Include:'include\unixtime.bm'
 '$Include:'include\hex.bm'
-'$Include:'include\getvalue.bas'
-'$Include:'include\reversemkl.bm'
-'$Include:'include\base32decode.bm'
-'$Include:'include\putbitbuffermsb.bm'
+'$Include:'include\GetValue.bas'
+'$Include:'include\ReverseMKL.bm'
+'$Include:'include\Base32Decode.bm'
+'$Include:'include\PutBitBufferMSB.bm'
 '$Include:'include\sha512.bm'
 '$Include:'include\crc32.bm'
 '$Include:'include\randomstring.bm'
+'$Include:'include\StringHex.bm'
 Function UnixTimeToString$ (TimeInterval~&) Static
     UnixTimeToString$ = _MK$(_Integer64, UnixTime / TimeInterval~&)
 End Function
